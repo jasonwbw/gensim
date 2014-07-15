@@ -14,6 +14,7 @@ from __future__ import with_statement
 
 import logging
 
+from gensim import utils
 from gensim.corpora import IndexedCorpus
 
 
@@ -62,26 +63,23 @@ class SvmLightCorpus(IndexedCorpus):
         self.store_labels = store_labels
         self.labels = []
 
-
     def __iter__(self):
         """
         Iterate over the corpus, returning one sparse vector at a time.
         """
-        length = 0
+        lineno = -1
         self.labels = []
-        with open(self.fname) as fin:
-            for lineNo, line in enumerate(fin):
+        with utils.smart_open(self.fname) as fin:
+            for lineno, line in enumerate(fin):
                 doc = self.line2doc(line)
                 if doc is not None:
                     if self.store_labels:
                         self.labels.append(doc[1])
-                    length += 1
                     yield doc[0]
-        self.length = length
-
+        self.length = lineno + 1
 
     @staticmethod
-    def save_corpus(fname, corpus, id2word=None, labels=False):
+    def save_corpus(fname, corpus, id2word=None, labels=False, metadata=False):
         """
         Save a corpus in the SVMlight format.
 
@@ -94,27 +92,26 @@ class SvmLightCorpus(IndexedCorpus):
         logger.info("converting corpus to SVMlight format: %s" % fname)
 
         offsets = []
-        with open(fname, 'w') as fout:
+        with utils.smart_open(fname, 'wb') as fout:
             for docno, doc in enumerate(corpus):
                 label = labels[docno] if labels else 0 # target class is 0 by default
                 offsets.append(fout.tell())
-                fout.write(SvmLightCorpus.doc2line(doc, label))
+                fout.write(utils.to_utf8(SvmLightCorpus.doc2line(doc, label)))
         return offsets
-
 
     def docbyoffset(self, offset):
         """
         Return the document stored at file position `offset`.
         """
-        with open(self.fname) as f:
+        with utils.smart_open(self.fname) as f:
             f.seek(offset)
             return self.line2doc(f.readline())[0]
-
 
     def line2doc(self, line):
         """
         Create a document from a single line (string) in SVMlight format
         """
+        line = utils.to_unicode(line)
         line = line[: line.find('#')].strip()
         if not line:
             return None # ignore comments and empty lines
@@ -125,12 +122,12 @@ class SvmLightCorpus(IndexedCorpus):
         doc = [(int(p1) - 1, float(p2)) for p1, p2 in fields if p1 != 'qid'] # ignore 'qid' features, convert 1-based feature ids to 0-based
         return doc, target
 
-
     @staticmethod
     def doc2line(doc, label=0):
         """
         Output the document in SVMlight format, as a string. Inverse function to `line2doc`.
         """
         pairs = ' '.join("%i:%s" % (termid + 1, termval) for termid, termval in doc) # +1 to convert 0-base to 1-base
-        return str(label) + " %s\n" % pairs
-#endclass SvmLightCorpus
+        return "%s %s\n" % (label, pairs)
+
+# endclass SvmLightCorpus

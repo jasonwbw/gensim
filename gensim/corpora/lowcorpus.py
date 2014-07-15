@@ -15,15 +15,15 @@ import logging
 
 from gensim import utils
 from gensim.corpora import IndexedCorpus
-from gensim._six import iteritems, iterkeys
-from gensim._six.moves import xrange, zip as izip
+from six import iteritems, iterkeys
+from six.moves import xrange, zip as izip
 
 
 logger = logging.getLogger('gensim.corpora.lowcorpus')
 
 
 def split_on_space(s):
-    return [word for word in s.strip().split(' ') if word]
+    return [word for word in utils.to_unicode(s).strip().split(' ') if word]
 
 
 class LowCorpus(IndexedCorpus):
@@ -67,7 +67,7 @@ class LowCorpus(IndexedCorpus):
 
         self.fname = fname # input file, see class doc for format
         self.line2words = line2words # how to translate lines into words (simply split on space by default)
-        self.num_docs = int(open(fname).readline()) # the first line in input data is the number of documents (integer). throws exception on bad input.
+        self.num_docs = self._calculate_num_docs()
 
         if not id2word:
             # build a list of all word types in the corpus (distinct words)
@@ -88,10 +88,18 @@ class LowCorpus(IndexedCorpus):
         logger.info("loaded corpus with %i documents and %i terms from %s" %
                      (self.num_docs, self.num_terms, fname))
 
+    def _calculate_num_docs(self):
+        # the first line in input data is the number of documents (integer). throws exception on bad input.
+        with utils.smart_open(self.fname) as fin:
+            try:
+                result = int(next(fin))
+            except StopIteration:
+                result = 0
+
+        return result
 
     def __len__(self):
         return self.num_docs
-
 
     def line2doc(self, line):
         words = self.line2words(line)
@@ -111,28 +119,28 @@ class LowCorpus(IndexedCorpus):
                     use_words.append(word)
                     marker.add(word)
             # construct a list of (wordIndex, wordFrequency) 2-tuples
-            doc = zip(map(self.word2id.get, use_words), map(words.count, use_words)) # using list.count is suboptimal but speed of this whole function is irrelevant
+            doc = list(zip(map(self.word2id.get, use_words),
+                      map(words.count, use_words)))
         else:
             uniq_words = set(words)
             # construct a list of (word, wordFrequency) 2-tuples
-            doc = zip(uniq_words, map(words.count, uniq_words)) # using list.count is suboptimal but that's irrelevant at this point
+            doc = list(zip(uniq_words, map(words.count, uniq_words)))
 
         # return the document, then forget it and move on to the next one
         # note that this way, only one doc is stored in memory at a time, not the whole corpus
         return doc
 
-
     def __iter__(self):
         """
         Iterate over the corpus, returning one bag-of-words vector at a time.
         """
-        for lineno, line in enumerate(open(self.fname)):
-            if lineno > 0: # ignore the first line = number of documents
-                yield self.line2doc(line)
-
+        with utils.smart_open(self.fname) as fin:
+            for lineno, line in enumerate(fin):
+                if lineno > 0: # ignore the first line = number of documents
+                    yield self.line2doc(line)
 
     @staticmethod
-    def save_corpus(fname, corpus, id2word=None):
+    def save_corpus(fname, corpus, id2word=None, metadata=False):
         """
         Save a corpus in the List-of-words format.
 
@@ -143,19 +151,19 @@ class LowCorpus(IndexedCorpus):
             logger.info("no word id mapping provided; initializing from corpus")
             id2word = utils.dict_from_corpus(corpus)
 
-        logger.info("storing corpus in List-Of-Words format: %s" % fname)
+        logger.info("storing corpus in List-Of-Words format into %s" % fname)
         truncated = 0
         offsets = []
-        with open(fname, 'w') as fout:
-            fout.write('%i\n' % len(corpus))
+        with utils.smart_open(fname, 'wb') as fout:
+            fout.write(utils.to_utf8('%i\n' % len(corpus)))
             for doc in corpus:
                 words = []
                 for wordid, value in doc:
                     if abs(int(value) - value) > 1e-6:
                         truncated += 1
-                    words.extend([str(id2word[wordid])] * int(value))
+                    words.extend([utils.to_unicode(id2word[wordid])] * int(value))
                 offsets.append(fout.tell())
-                fout.write('%s\n' % ' '.join(words))
+                fout.write(utils.to_utf8('%s\n' % ' '.join(words)))
 
         if truncated:
             logger.warning("List-of-words format can only save vectors with "
@@ -163,13 +171,12 @@ class LowCorpus(IndexedCorpus):
                             truncated)
         return offsets
 
-
     def docbyoffset(self, offset):
         """
         Return the document stored at file position `offset`.
         """
-        with open(self.fname) as f:
+        with utils.smart_open(self.fname) as f:
             f.seek(offset)
             return self.line2doc(f.readline())
-#endclass LowCorpus
 
+# endclass LowCorpus

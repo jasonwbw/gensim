@@ -28,7 +28,7 @@ import itertools
 import zlib
 
 from gensim import utils
-from gensim._six import iteritems, iterkeys
+from six import iteritems, iterkeys
 
 
 logger = logging.getLogger('gensim.corpora.hashdictionary')
@@ -87,7 +87,7 @@ class HashDictionary(utils.SaveLoad, dict):
         Calculate id of the given token. Also keep track of what words were mapped
         to what ids, for debugging reasons.
         """
-        h = self.myhash(token) % self.id_range
+        h = self.myhash(utils.to_utf8(token)) % self.id_range
         if self.debug:
             self.token2id[token] = h
             self.id2token.setdefault(h, set()).add(token)
@@ -228,5 +228,6 @@ class HashDictionary(utils.SaveLoad, dict):
                 if words:
                     words_df = [(word, self.dfs_debug.get(word, 0)) for word in words]
                     words_df = ["%s(%i)" % item for item in sorted(words_df, key=lambda item: -item[1])]
-                    fout.write("%i\t%i\t%s\n" % (tokenid, self.dfs.get(tokenid, 0), '\t'.join(words_df)))
+                    fout.write(utils.to_utf8("%i\t%i\t%s\n" %
+                        (tokenid, self.dfs.get(tokenid, 0), '\t'.join(words_df))))
 #endclass HashDictionary

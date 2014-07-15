@@ -50,7 +50,7 @@ except ImportError: # maxentropy has been removed for next release
 
 
 from gensim import interfaces, utils
-from gensim._six.moves import xrange
+from six.moves import xrange
 
 
 def dirichlet_expectation(alpha):
@@ -229,8 +229,10 @@ class LdaModel(interfaces.TransformationABC):
             logger.warning("no word id mapping provided; initializing from corpus, assuming identity")
             self.id2word = utils.dict_from_corpus(corpus)
             self.num_terms = len(self.id2word)
+        elif len(self.id2word) > 0:
+            self.num_terms = 1 + max(self.id2word.keys())
         else:
-            self.num_terms = 1 + max([-1] + self.id2word.keys())
+            self.num_terms = 0
 
         if self.num_terms == 0:
             raise ValueError("cannot compute LDA over an empty collection (no terms)")
@@ -331,7 +333,7 @@ class LdaModel(interfaces.TransformationABC):
         If `collect_sstats` is True, also collect sufficient statistics needed
         to update the model's topic-word distributions, and return a 2-tuple
         `(gamma, sstats)`. Otherwise, return `(gamma, None)`. `gamma` is of shape
-        `len(chunk) x topics`.
+        `len(chunk) x self.num_topics`.
 
         """
         try:
@@ -389,8 +391,8 @@ class LdaModel(interfaces.TransformationABC):
                 sstats[:, ids] += numpy.outer(expElogthetad.T, cts / phinorm)
 
         if len(chunk) > 1:
-            logger.info("%i/%i documents converged within %i iterations" %
-                         (converged, len(chunk), self.iterations))
+            logger.debug("%i/%i documents converged within %i iterations" %
+                (converged, len(chunk), self.iterations))
 
         if collect_sstats:
             # This step finishes computing the sufficient statistics for the
@@ -515,8 +517,8 @@ class LdaModel(interfaces.TransformationABC):
         updates_per_pass = max(1, lencorpus / updateafter)
         logger.info("running %s LDA training, %s topics, %i passes over "
                     "the supplied corpus of %i documents, updating model once "
-                    "every %i documents, evaluating perplexity every %i documents,"
-                    "iterating %i with a convergence threshold of %i" %
+                    "every %i documents, evaluating perplexity every %i documents, "
+                    "iterating %ix with a convergence threshold of %f" %
                     (updatetype, self.num_topics, passes, lencorpus,
                         updateafter, evalafter, iterations,
                         gamma_threshold))
@@ -648,35 +650,38 @@ class LdaModel(interfaces.TransformationABC):
         return score
 
 
-    def print_topics(self, topics=10, topn=10):
-        return self.show_topics(topics, topn, log=True)
+    def print_topics(self, num_topics=10, num_words=10):
+        return self.show_topics(num_topics, num_words, log=True)
 
-    def show_topics(self, topics=10, topn=10, log=False, formatted=True):
+    def show_topics(self, num_topics=10, num_words=10, log=False, formatted=True):
         """
-        Print the `topN` most probable words for `topics` number of topics.
-        Set `topics=-1` to print all topics.
+        For `num_topics` number of topics, return `num_words` most significant words
+        (10 words per topic, by default).
 
-        Unlike LSA, there is no ordering between the topics in LDA.
-        The printed `topics <= self.num_topics` subset of all topics is therefore
-        arbitrary and may change between two runs.
+        The topics are returned as a list -- a list of strings if `formatted` is
+        True, or a list of (probability, word) 2-tuples if False.
 
-        Set `formatted=True` to return the topics as a list of strings, or `False` as lists of (weight, word) pairs.
+        If `log` is True, also output this result to log.
+
+        Unlike LSA, there is no natural ordering between the topics in LDA.
+        The returned `num_topics <= self.num_topics` subset of all topics is therefore
+        arbitrary and may change between two LDA training runs.
 
         """
-        if topics < 0 or topics >= self.num_topics:
-            topics = self.num_topics
-            chosen_topics = range(topics)
+        if num_topics < 0 or num_topics >= self.num_topics:
+            num_topics = self.num_topics
+            chosen_topics = range(num_topics)
         else:
-            topics = min(topics, self.num_topics)
+            num_topics = min(num_topics, self.num_topics)
             sort_alpha = self.alpha + 0.0001 * numpy.random.rand(len(self.alpha)) # add a little random jitter, to randomize results around the same alpha
             sorted_topics = list(numpy.argsort(sort_alpha))
-            chosen_topics = sorted_topics[ : topics/2] + sorted_topics[-topics/2 : ]
+            chosen_topics = sorted_topics[:num_topics//2] + sorted_topics[-num_topics//2:]
         shown = []
-        for i in chosen_topics[::-1]:
+        for i in chosen_topics:
             if formatted:
-                topic = self.print_topic(i, topn=topn)
+                topic = self.print_topic(i, topn=num_words)
             else:
-                topic = self.show_topic(i, topn=topn)
+                topic = self.show_topic(i, topn=num_words)
             shown.append(topic)
             if log:
                 logger.info("topic #%i (%.3f): %s" % (i, self.alpha[i], topic))

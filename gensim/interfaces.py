@@ -17,7 +17,7 @@ import logging
 import itertools
 
 from gensim import utils, matutils
-from gensim._six.moves import xrange
+from six.moves import xrange
 
 
 logger = logging.getLogger('gensim.interfaces')
@@ -55,6 +55,12 @@ class CorpusABC(utils.SaveLoad):
         raise NotImplementedError('cannot instantiate abstract base class')
 
 
+    def save(self, *args, **kwargs):
+        import warnings
+        warnings.warn("corpus.save() stores only the (tiny) iteration object; "
+            "to serialize the actual corpus content, use e.g. MmCorpus.serialize(corpus)")
+        super(CorpusABC, self).save(*args, **kwargs)
+
     def __len__(self):
         """
         Return the number of documents in the corpus.
@@ -67,7 +73,7 @@ class CorpusABC(utils.SaveLoad):
 #        return sum(1 for doc in self) # sum(empty generator) == 0, so this works even for an empty corpus
 
     @staticmethod
-    def save_corpus(fname, corpus, id2word=None):
+    def save_corpus(fname, corpus, id2word=None, metadata=False):
         """
         Save an existing `corpus` to disk.
 
@@ -91,16 +97,17 @@ class CorpusABC(utils.SaveLoad):
 
         # example code:
         logger.info("converting corpus to ??? format: %s" % fname)
-        with open(fname, 'w') as fout:
+        with utils.smart_open(fname, 'wb') as fout:
             for doc in corpus: # iterate over the document stream
                 fmt = str(doc) # format the document appropriately...
-                fout.write("%s\n" % fmt) # serialize the formatted document to disk
+                fout.write(utils.to_utf8("%s\n" % fmt)) # serialize the formatted document to disk
 #endclass CorpusABC
 
 
 class TransformedCorpus(CorpusABC):
     def __init__(self, obj, corpus, chunksize=None):
         self.obj, self.corpus, self.chunksize = obj, corpus, chunksize
+        self.metadata = False
 
     def __len__(self):
         return len(self.corpus)

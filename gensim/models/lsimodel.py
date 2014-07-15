@@ -59,8 +59,8 @@ import scipy.sparse
 from scipy.sparse import sparsetools
 
 from gensim import interfaces, matutils, utils
-from gensim._six import iterkeys
-from gensim._six.moves import xrange
+from six import iterkeys
+from six.moves import xrange
 
 
 logger = logging.getLogger('gensim.models.lsimodel')
@@ -121,8 +121,9 @@ class Projection(utils.SaveLoad):
             # base case decomposition: given a job `docs`, compute its decomposition,
             # *in-core*.
             if not use_svdlibc:
-                u, s = stochastic_svd(docs, k, chunksize=sys.maxint, num_terms=m,
-                    power_iters=self.power_iters, extra_dims=self.extra_dims)
+                u, s = stochastic_svd(docs, k, chunksize=sys.maxsize,
+                    num_terms=m, power_iters=self.power_iters,
+                    extra_dims=self.extra_dims)
             else:
                 try:
                     import sparsesvd
@@ -465,13 +466,13 @@ class LsiModel(interfaces.TransformationABC):
     def show_topic(self, topicno, topn=10):
         """
         Return a specified topic (=left singular vector), 0 <= `topicno` < `self.num_topics`,
-        as string.
+        as a string.
 
         Return only the `topn` words which contribute the most to the direction
         of the topic (both negative and positive).
 
-        >>> lsimodel.print_topic(10, topn=5)
-        '-0.340 * "category" + 0.298 * "$M$" + 0.183 * "algebra" + -0.174 * "functor" + -0.168 * "operator"'
+        >>> lsimodel.show_topic(10, topn=5)
+        [(-0.340, "category"), (0.298, "$M$"), (0.183, "algebra"), (-0.174, "functor"), (-0.168, "operator")]
 
         """
         # size of the projection matrix can actually be smaller than `self.num_topics`,
@@ -485,15 +486,22 @@ class LsiModel(interfaces.TransformationABC):
         return [(1.0 * c[val] / norm, self.id2word[val]) for val in most]
 
     def print_topic(self, topicno, topn=10):
+        """
+        Return a single topic as a formatted string. See `show_topic()` for parameters.
+
+        >>> lsimodel.print_topic(10, topn=5)
+        '-0.340 * "category" + 0.298 * "$M$" + 0.183 * "algebra" + -0.174 * "functor" + -0.168 * "operator"'
+
+        """
         return ' + '.join(['%.3f*"%s"' % v for v in self.show_topic(topicno, topn)])
 
     def show_topics(self, num_topics=-1, num_words=10, log=False, formatted=True):
         """
-        Show `num_topics` most significant topics (show all by default).
-        For each topic, show `num_words` most significant words (10 words by defaults).
+        Return `num_topics` most significant topics (return all by default).
+        For each topic, show `num_words` most significant words (10 words by default).
 
-        Return the shown topics as a list -- a list of strings if `formatted` is
-        True, or a list of  (value, word) 2-tuples if it's False.
+        The topics are returned as a list -- a list of strings if `formatted` is
+        True, or a list of (weight, word) 2-tuples if False.
 
         If `log` is True, also output this result to log.
 
